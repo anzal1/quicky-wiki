@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.quicky/
+*.sqlite
+*.db
+.env
+.env.local
+.DS_Store
+.playwright-mcp/
+*.tgz
+DESIGN-SYSTEM.md
+VISION.md
+.vscode/

@@ -1,0 +1,61 @@
+{
+  "name": "quicky-wiki",
+  "version": "0.1.0",
+  "description": "An LLM-powered knowledge compiler with temporal tracking, confidence scoring, and multi-target compilation",
+  "type": "module",
+  "bin": {
+    "qw": "./dist/cli.js",
+    "create-quicky-wiki": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/cli.js",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "better-sqlite3": "^11.7.0",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "glob": "^11.0.1",
+    "gray-matter": "^4.0.3",
+    "openai": "^4.82.0",
+    "ora": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.13.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "llm",
+    "wiki",
+    "knowledge-base",
+    "knowledge-graph",
+    "ai",
+    "rag",
+    "mcp",
+    "obsidian",
+    "personal-knowledge",
+    "temporal-knowledge",
+    "confidence-scoring",
+    "karpathy"
+  ],
+  "homepage": "https://github.com/anzal/quicky-wiki#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anzal/quicky-wiki.git"
+  },
+  "license": "MIT"
+}
