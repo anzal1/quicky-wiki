@@ -52,10 +52,10 @@
     "confidence-scoring",
     "karpathy"
   ],
-  "homepage": "https://github.com/anzal/quicky-wiki#readme",
+  "homepage": "https://github.com/anzal1/quicky-wiki#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anzal/quicky-wiki.git"
+    "url": "https://github.com/anzal1/quicky-wiki.git"
   },
   "license": "MIT"
 }
