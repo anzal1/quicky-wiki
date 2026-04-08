@@ -14,6 +14,8 @@ export async function createQuickyWiki(opts: {
   dir?: string;
   provider?: string;
   model?: string;
+  baseUrl?: string;
+  apiKeyEnv?: string;
 }): Promise<void> {
   const dir = opts.dir || process.cwd();
   const name = opts.name || "My Wiki";
@@ -36,6 +38,7 @@ export async function createQuickyWiki(opts: {
       "openai-compatible": [],
     };
     apiKeyEnv = (envMap[provider] || []).find((v) => process.env[v]);
+    if (opts.apiKeyEnv) apiKeyEnv = opts.apiKeyEnv;
 
     if (!opts.model && apiKeyEnv) {
       // Auto-fetch the best model from the API
@@ -75,6 +78,9 @@ export async function createQuickyWiki(opts: {
       );
     }
   }
+
+  // CLI --base-url takes priority
+  if (opts.baseUrl) baseUrl = opts.baseUrl;
 
   if (!baseUrl) {
     if (provider === "gemini") {

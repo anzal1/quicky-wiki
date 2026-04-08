@@ -1,6 +1,6 @@
 {
   "name": "quicky-wiki",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "An LLM-powered knowledge compiler with temporal tracking, confidence scoring, and multi-target compilation",
   "type": "module",
   "bin": {
