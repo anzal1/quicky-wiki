@@ -74,6 +74,8 @@ export interface WikiPage {
   title: string;
   path: string; // relative path within wiki/
   summary: string;
+  kind: string;
+  metadata: Record<string, unknown>;
   claims: string[]; // claim IDs
   linksTo: string[]; // page IDs
   linkedFrom: string[]; // page IDs
@@ -108,6 +110,7 @@ export interface KnowledgeDiff {
     claimId: string;
     statement: string;
     confidence: number;
+    tags?: string[];
   }>;
   gapsIdentified: Array<{
     concept: string;
@@ -196,6 +199,10 @@ export interface QuickyConfig {
     resurfaceIntervalDays: number;
   };
   qualityWeights: Record<QualityTier, number>;
+  /** First match wins: path substring match, or `type:value` against frontmatter `type`. */
+  kindRules?: Array<{ pattern: string; kind: string }>;
+  /** Optional extra system prompt per page `kind` during claim extraction. */
+  entityPrompts?: Record<string, string>;
 }
 
 export const DEFAULT_CONFIG: QuickyConfig = {

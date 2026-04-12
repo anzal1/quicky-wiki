@@ -32,7 +32,7 @@ export async function watchCommand(opts: { debounce?: string }): Promise<void> {
       const llm = await createLLM(config);
       const spinner = ora(`Ingesting ${filePath}...`).start();
 
-      const diff = await ingestSource(store, llm, filePath);
+      const diff = await ingestSource(store, llm, filePath, { config });
       spinner.succeed(`Ingested ${diff.sourceTitle}`);
 
       // Quick summary
@@ -67,13 +67,15 @@ export async function watchCommand(opts: { debounce?: string }): Promise<void> {
     }
   }
 
-  // Initial scan — ingest any un-ingested files
+  // Initial scan — ingest any un-ingested files (recursive)
   try {
-    const files = await readdir(rawDir);
+    const files = await readdir(rawDir, { recursive: true });
     for (const file of files) {
-      const full = join(rawDir, file);
+      const rel = typeof file === "string" ? file : file.toString();
+      if (rel.split("/").some((seg) => seg.startsWith("."))) continue;
+      const full = join(rawDir, rel);
       const s = await stat(full);
-      if (s.isFile() && !file.startsWith(".")) {
+      if (s.isFile()) {
         const store = openStore();
         const existing = store.getSourceByPath(full);
         store.close();

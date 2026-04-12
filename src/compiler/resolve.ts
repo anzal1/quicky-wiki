@@ -86,6 +86,7 @@ export async function resolveKnowledge(
         pageId: page.id,
         confidence: nc.confidence,
         sourceIds: [source.id],
+        tags: nc.tags ?? [],
       });
       nc.claimId = claim.id;
       claimPageIds.push(page.id);

@@ -3,6 +3,27 @@ import { join, dirname } from "node:path";
 import type { KnowledgeStore } from "../graph/store.js";
 import type { WikiPage, Claim } from "../types.js";
 
+const RESERVED_FM_KEYS = new Set([
+  "title",
+  "created",
+  "updated",
+  "claims",
+  "avg_confidence",
+  "kind",
+]);
+
+function yamlScalar(value: unknown): string {
+  if (value === null || value === undefined) return '""';
+  if (typeof value === "string") {
+    if (/[\n:#"']|^\s|\s$/.test(value)) return JSON.stringify(value);
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
 export async function renderWikiPage(
   store: KnowledgeStore,
   page: WikiPage,
@@ -13,9 +34,15 @@ export async function renderWikiPage(
     .map((id) => store.getPage(id))
     .filter(Boolean);
 
+  const metaLines = Object.entries(page.metadata ?? {})
+    .filter(([k]) => !RESERVED_FM_KEYS.has(k.toLowerCase()))
+    .map(([k, v]) => `${k}: ${yamlScalar(v)}`);
+
   const frontmatter = [
     "---",
-    `title: "${page.title}"`,
+    `title: "${page.title.replace(/"/g, '\\"')}"`,
+    `kind: ${yamlScalar(page.kind)}`,
+    ...metaLines,
     `created: ${page.createdAt}`,
     `updated: ${page.updatedAt}`,
     `claims: ${claims.length}`,
