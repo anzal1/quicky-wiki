@@ -69,10 +69,9 @@ export async function watchCommand(opts: { debounce?: string }): Promise<void> {
 
   // Initial scan — ingest any un-ingested files (recursive)
   try {
-    const files = await readdir(rawDir, { recursive: true });
-    for (const file of files) {
-      const rel = typeof file === "string" ? file : file.toString();
-      if (rel.split("/").some((seg) => seg.startsWith("."))) continue;
+    const files = (await readdir(rawDir, { recursive: true })) as string[];
+    for (const rel of files) {
+      if (rel.split("/").some((seg: string) => seg.startsWith("."))) continue;
       const full = join(rawDir, rel);
       const s = await stat(full);
       if (s.isFile()) {
