@@ -114,6 +114,7 @@ export async function ingestCommand(
           const diff = await ingestSource(store, llm, fp, {
             type: opts.type as any,
             qualityTier: opts.quality as any,
+            config,
             onProgress(_step, detail) {
               if (detail) s.text = `[${i + 1}/${files.length}] ${detail}`;
             },
@@ -161,6 +162,7 @@ export async function ingestCommand(
       const diff = await ingestSource(store, llm, fullPath, {
         type: opts.type as any,
         qualityTier: opts.quality as any,
+        config,
         onProgress(step, detail) {
           if (detail) spinner!.text = detail;
         },

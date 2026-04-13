@@ -189,7 +189,7 @@ export function startDashboard(
               bookmarkUrl,
               resolvePath(config.paths.raw),
             );
-            const diff = await ingestSource(store, llm, filePath);
+            const diff = await ingestSource(store, llm, filePath, { config });
             cache.invalidate();
             json(res, {
               success: true,
@@ -544,7 +544,7 @@ tr{transition:var(--transition);cursor:pointer}tr:hover td{background:var(--acce
     </div>
     <div id="view-pages" class="view">
       <input type="text" id="page-search" placeholder="Filter pages..." style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:10px 16px;border-radius:var(--radius-sm);font-size:14px;outline:none;margin-bottom:18px;font-family:inherit;box-shadow:var(--shadow-xs)">
-      <div class="panel"><table><thead><tr><th>Title</th><th>Claims</th><th>Links</th><th>Updated</th></tr></thead><tbody id="pages-table"></tbody></table></div>
+      <div class="panel"><table><thead><tr><th>Title</th><th>Kind</th><th>Metadata</th><th>Claims</th><th>Links</th><th>Updated</th></tr></thead><tbody id="pages-table"></tbody></table></div>
     </div>
     <div id="view-timeline" class="view">
       <div class="panel"><div class="panel-header">🕐 Epistemic Timeline</div><div class="panel-body" id="timeline-list"></div></div>
@@ -640,6 +640,33 @@ function closeSlideOver(){
 document.getElementById('slideOver-close').addEventListener('click',closeSlideOver);
 document.getElementById('slideOver-backdrop').addEventListener('click',closeSlideOver);
 
+function findPageIdByTitle(title){
+  if(!title||!DATA.pages)return null;
+  const t=title.replace(/\\s+/g,' ').trim();const lower=t.toLowerCase();
+  const p=DATA.pages.find(x=>{
+    const xt=x.title.replace(/\\s+/g,' ').trim();
+    return xt===t||xt.toLowerCase()===lower;
+  });
+  return p?p.id:null;
+}
+document.getElementById('slideOver-body').addEventListener('click',function(e){
+  const chip=e.target.closest('.linked-page-chip[data-page-id]');
+  if(chip){
+    e.preventDefault();e.stopPropagation();
+    const id=chip.getAttribute('data-page-id');
+    if(id)openPage(id);
+    return;
+  }
+  const wiki=e.target.closest('.md-content .wiki-link');
+  if(wiki){
+    e.preventDefault();e.stopPropagation();
+    const raw=wiki.getAttribute('data-wiki-target');
+    const pid=findPageIdByTitle(raw||'')||findPageIdByTitle(wiki.textContent||'');
+    if(pid)openPage(pid);
+    return;
+  }
+});
+
 async function openPage(pageId){
   closeSearch();
   const page=await fetch('/api/page?id='+pageId).then(r=>r.json());
@@ -660,7 +687,6 @@ async function openPage(pageId){
   if(page.markdown)html+='<div class="slideOver-section"><div class="md-content">'+renderMarkdown(page.markdown)+'</div></div>';
   html+='<div class="slideOver-section" style="border-top:2px solid var(--red-dim);padding-top:16px;margin-top:8px"><button id="delete-page-btn" style="background:var(--red-dim);color:var(--red);border:1px solid transparent;border-radius:var(--radius-xs);padding:6px 16px;cursor:pointer;font-size:12px;font-weight:600;transition:var(--transition)" onmouseover="this.style.background=\\'var(--red)\\';this.style.color=\\'white\\'" onmouseout="this.style.background=\\'var(--red-dim)\\';this.style.color=\\'var(--red)\\'">Delete Page</button></div>';
   openSlideOver(html,page.title);
-  document.querySelectorAll('.linked-page-chip[data-page-id]').forEach(el=>{el.addEventListener('click',()=>openPage(el.dataset.pageId));});
   document.querySelectorAll('.del-page-claim').forEach(btn=>{btn.addEventListener('click',async()=>{if(!confirm('Delete this claim?'))return;await fetch('/api/claim?id='+btn.dataset.claimId,{method:'DELETE'});await refreshData();openPage(page.id);});});
   document.getElementById('delete-page-btn').addEventListener('click',async()=>{if(!confirm('Delete page "'+page.title+'" and all its claims?'))return;await fetch('/api/page?id='+page.id,{method:'DELETE'});await refreshData();closeSlideOver();renderPages();});
 }
@@ -698,12 +724,21 @@ function renderMarkdown(md){
   return html;
 }
 function formatInline(s){
+  const wikiPh=[];
+  s=s.replace(/\\[\\[([^\\]]+)\\]\\]/g,function(_,inner){
+    const parts=inner.split('|');
+    const target=(parts.length>1?parts[parts.length-1]:parts[0]).trim();
+    const label=parts.length>1?parts.slice(0,-1).join('|').trim():target;
+    const i=wikiPh.length;
+    wikiPh.push('<span class="wiki-link" data-wiki-target="'+esc(target)+'">'+esc(label)+'</span>');
+    return'__WIKILINK_'+i+'__';
+  });
   s=esc(s);
+  s=s.replace(/__WIKILINK_(\\d+)__/g,function(_,i){return wikiPh[parseInt(i,10)]||'';});
   s=s.replace(/\\*\\*(.+?)\\*\\*/g,'<strong>$1</strong>');
   s=s.replace(/(?:^|[^\\w])_([^_]+?)_(?:[^\\w]|$)/g,function(m,p1){return m.replace('_'+p1+'_','<em>'+p1+'</em>');});
   s=s.replace(/\\*([^*]+?)\\*/g,'<em>$1</em>');
   s=s.replace(/\`([^\`]+?)\`/g,'<code>$1</code>');
-  s=s.replace(/\\[\\[([^\\]]+?)\\]\\]/g,'<span class="wiki-link">$1</span>');
   s=s.replace(/\\^([a-f0-9]{6,})/g,'<span class="claim-hash">↗$1</span>');
   s=s.replace(/(🟢)/g,'<span class="conf-dot high"></span>').replace(/(🟡)/g,'<span class="conf-dot mid"></span>').replace(/(🔴)/g,'<span class="conf-dot low"></span>');
   return s;
@@ -765,8 +800,27 @@ document.getElementById('claim-search').addEventListener('input',applyClaimFilte
 function renderPages(){applyPageFilter();}
 function applyPageFilter(){
   const q=(document.getElementById('page-search').value||'').toLowerCase();
-  let pages=DATA.pages;if(q)pages=pages.filter(p=>p.title.toLowerCase().includes(q));
-  document.getElementById('pages-table').innerHTML=pages.map(p=>'<tr data-page-id="'+p.id+'"><td><span class="page-link">'+esc(p.title)+'</span></td><td style="text-align:center">'+p.claimCount+'</td><td style="text-align:center">'+p.linkCount+'</td><td style="color:var(--text-dim)">'+relTime(p.updatedAt)+'</td></tr>').join('');
+  let pages=DATA.pages;
+  if(q)pages=pages.filter(p=>{
+    const metaStr=JSON.stringify(p.metadata||{}).toLowerCase();
+    return p.title.toLowerCase().includes(q)||String(p.kind||'topic').toLowerCase().includes(q)||metaStr.includes(q);
+  });
+  const byKind={};
+  for(const p of pages){
+    const k=p.kind||'topic';
+    (byKind[k]=byKind[k]||[]).push(p);
+  }
+  const keys=Object.keys(byKind).sort();
+  let html='';
+  for(const k of keys){
+    html+='<tr class="kind-section"><td colspan="6" style="background:var(--surface-hover);font-weight:600;padding:8px 12px">'+esc(k)+' <span style="font-weight:400;color:var(--text-dim)">('+byKind[k].length+')</span></td></tr>';
+    for(const p of byKind[k]){
+      const rawMeta=JSON.stringify(p.metadata||{});
+      const metaPreview=p.metadata&&Object.keys(p.metadata).length?(esc(rawMeta.length>80?rawMeta.slice(0,80)+'…':rawMeta)):'—';
+      html+='<tr data-page-id="'+p.id+'"><td><span class="page-link">'+esc(p.title)+'</span></td><td><code style="font-size:11px">'+esc(String(p.kind||'topic'))+'</code></td><td style="font-size:11px;color:var(--text-dim);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(rawMeta)+'">'+metaPreview+'</td><td style="text-align:center">'+p.claimCount+'</td><td style="text-align:center">'+p.linkCount+'</td><td style="color:var(--text-dim)">'+relTime(p.updatedAt)+'</td></tr>';
+    }
+  }
+  document.getElementById('pages-table').innerHTML=html;
 }
 document.getElementById('page-search').addEventListener('input',applyPageFilter);
 document.addEventListener('click',e=>{const row=e.target.closest('tr[data-page-id]');if(row)openPage(row.dataset.pageId);});

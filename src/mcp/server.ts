@@ -14,12 +14,14 @@ import { generateHealthReport } from "../metabolism/health.js";
  *
  * Tools exposed:
  * - query_wiki: Ask a question against the knowledge base
- * - list_pages: List all wiki pages with summaries
+ * - list_pages: List wiki pages (optional kind filter)
+ * - list_entities: List pages by entity kind with metadata filters
  * - get_page: Get detailed page content
- * - search: Search pages and claims
+ * - search_wiki: FTS search pages and claims
  * - list_claims: List claims with optional confidence filter
  * - health_report: Get knowledge health report
- * - ingest_file: Ingest a source file
+ * - ingest_file: Ingest a source file (optional kind/metadata overrides)
+ * - update_entity_metadata: Merge fields into page metadata_json
  */
 export function startMCPServer(
   store: KnowledgeStore,
@@ -51,7 +53,36 @@ const TOOLS = [
     name: "list_pages",
     description:
       "List all wiki pages with titles, summaries, claim counts, and confidence averages.",
-    inputSchema: { type: "object", properties: {} },
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          description:
+            "Optional: only pages with this entity kind (e.g. person, project, topic)",
+        },
+      },
+    },
+  },
+  {
+    name: "list_entities",
+    description:
+      "List wiki pages of a specific entity kind with structured metadata. Use for typed inventories (people, projects, etc.).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          description: "Entity kind to filter by (e.g. person, project, topic)",
+        },
+        filter: {
+          type: "object",
+          description:
+            "Optional key-value filters on metadata (e.g. { status: 'active' })",
+        },
+      },
+      required: ["kind"],
+    },
   },
   {
     name: "get_page",
@@ -111,8 +142,32 @@ const TOOLS = [
           type: "string",
           description: "Path to the source file to ingest",
         },
+        kind: {
+          type: "string",
+          description: "Override entity kind for the primary page from this file",
+        },
+        metadata: {
+          type: "object",
+          description: "Extra fields merged into the primary page metadata_json",
+        },
       },
       required: ["path"],
+    },
+  },
+  {
+    name: "update_entity_metadata",
+    description:
+      "Merge key-value pairs into a page's metadata_json. Does not change claims.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Wiki page title" },
+        metadata: {
+          type: "object",
+          description: "Fields to merge into existing metadata",
+        },
+      },
+      required: ["title", "metadata"],
     },
   },
 ];
@@ -146,7 +201,11 @@ async function handleToolCall(
     }
 
     case "list_pages": {
-      const pages = store.listPages();
+      const kindFilter = args.kind as string | undefined;
+      let pages = store.listPages();
+      if (kindFilter) {
+        pages = pages.filter((p) => p.kind === kindFilter);
+      }
       const claims = store.listClaims();
       const result = pages.map((p) => {
         const pageClaims = claims.filter((c) => c.pageId === p.id);
@@ -155,12 +214,33 @@ async function handleToolCall(
           : 0;
         return {
           title: p.title,
+          kind: p.kind,
           summary: p.summary || "(no summary)",
           claims: pageClaims.length,
           avgConfidence: Math.round(avgConf * 100) + "%",
           links: p.linksTo.length,
         };
       });
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    }
+
+    case "list_entities": {
+      const kind = args.kind as string;
+      const filter = args.filter as Record<string, unknown> | undefined;
+      const pages = store.listPages().filter((p) => p.kind === kind);
+      const matches = pages.filter((p) => {
+        if (!filter) return true;
+        return Object.entries(filter).every(([k, v]) => p.metadata[k] === v);
+      });
+      const result = matches.map((p) => ({
+        title: p.title,
+        kind: p.kind,
+        metadata: p.metadata,
+        summary: p.summary,
+        claimCount: store.getClaimsByPage(p.id).length,
+      }));
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -185,6 +265,8 @@ async function handleToolCall(
             text: JSON.stringify(
               {
                 title: page.title,
+                kind: page.kind,
+                metadata: page.metadata,
                 summary: page.summary,
                 claims: pageClaims.map((c) => ({
                   statement: c.statement,
@@ -203,27 +285,10 @@ async function handleToolCall(
     }
 
     case "search_wiki": {
-      const q = (args.query as string).toLowerCase();
-      const pages = store
-        .listPages()
-        .filter(
-          (p) =>
-            p.title.toLowerCase().includes(q) ||
-            p.summary.toLowerCase().includes(q),
-        )
-        .slice(0, 20)
-        .map((p) => ({ title: p.title, summary: p.summary?.slice(0, 100) }));
-      const claims = store
-        .listClaims()
-        .filter((c) => c.statement.toLowerCase().includes(q))
-        .slice(0, 20)
-        .map((c) => ({
-          statement: c.statement,
-          confidence: Math.round(c.confidence * 100) + "%",
-        }));
+      const results = store.search(args.query as string, 20);
       return {
         content: [
-          { type: "text", text: JSON.stringify({ pages, claims }, null, 2) },
+          { type: "text", text: JSON.stringify(results, null, 2) },
         ],
       };
     }
@@ -258,7 +323,15 @@ async function handleToolCall(
 
     case "ingest_file": {
       const filePath = resolve(args.path as string);
-      const diff = await ingestSource(store, llm, filePath);
+      const kindOverride = args.kind as string | undefined;
+      const metadataOverride = args.metadata as
+        | Record<string, unknown>
+        | undefined;
+      const diff = await ingestSource(store, llm, filePath, {
+        config,
+        ...(kindOverride ? { kind: kindOverride } : {}),
+        ...(metadataOverride ? { metadata: metadataOverride } : {}),
+      });
 
       // Generate summaries
       const needSummary = store
@@ -291,8 +364,47 @@ async function handleToolCall(
       };
     }
 
+    case "update_entity_metadata": {
+      const page = store.getPageByTitle(args.title as string);
+      if (!page) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Page \"" + String(args.title) + "\" not found.",
+            },
+          ],
+        };
+      }
+      store.updatePageMetadata(
+        page.id,
+        args.metadata as Record<string, unknown>,
+      );
+      const updated = store.getPage(page.id)!;
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                title: updated.title,
+                kind: updated.kind,
+                metadata: updated.metadata,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    }
+
     default:
-      return { content: [{ type: "text", text: `Unknown tool: ${toolName}` }] };
+      return {
+        content: [
+          { type: "text", text: "Unknown tool: " + String(toolName) },
+        ],
+      };
   }
 }
 

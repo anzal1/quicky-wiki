@@ -160,9 +160,28 @@ function renderObsidianPage(
     }
   }
 
+  const reserved = new Set([
+    "title",
+    "created",
+    "updated",
+    "claims",
+    "avg_confidence",
+    "kind",
+    "tags",
+    "sources",
+  ]);
+  const metaLines = Object.entries(page.metadata ?? {})
+    .filter(([k]) => !reserved.has(k.toLowerCase()))
+    .map(([k, v]) => {
+      if (typeof v === "string" && !/[\n:#]/.test(v)) return `${k}: ${v}`;
+      return `${k}: ${JSON.stringify(v)}`;
+    });
+
   const frontmatter = [
     "---",
     `title: "${page.title.replace(/"/g, '\\"')}"`,
+    `kind: ${page.kind}`,
+    ...metaLines,
     `created: ${page.createdAt.split("T")[0]}`,
     `updated: ${page.updatedAt.split("T")[0]}`,
     `claims: ${claims.length}`,
