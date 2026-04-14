@@ -3,7 +3,17 @@
   "version": "0.1.1",
   "description": "An LLM-powered knowledge compiler with temporal tracking, confidence scoring, and multi-target compilation",
   "type": "module",
+  "main": "./dist/lib.js",
+  "types": "./dist/lib.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/lib.js",
+      "types": "./dist/lib.d.ts"
+    },
+    "./cli": "./dist/cli.js"
+  },
   "bin": {
+    "quicky-wiki": "./dist/cli.js",
     "qw": "./dist/cli.js",
     "create-quicky-wiki": "./dist/cli.js"
   },

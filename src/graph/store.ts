@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS pages (
   title TEXT NOT NULL UNIQUE,
   path TEXT NOT NULL UNIQUE,
   summary TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'topic',
+  metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -142,10 +144,29 @@ export class KnowledgeStore {
     this.db.pragma("synchronous = NORMAL"); // safe with WAL, faster than FULL
     this.db.pragma("temp_store = MEMORY"); // temp tables in RAM
     this.db.exec(SCHEMA);
+    this.ensurePageEntityColumns();
     this.db.exec(FTS_SCHEMA);
     this.db.exec(FTS_TRIGGERS);
     this.rebuildFtsIfEmpty();
     this.stmts = this.prepareStatements();
+  }
+
+  /** Add kind + metadata_json to existing DBs created before entity typing. */
+  private ensurePageEntityColumns(): void {
+    const cols = this.db.prepare("PRAGMA table_info(pages)").all() as {
+      name: string;
+    }[];
+    const names = new Set(cols.map((c) => c.name));
+    if (!names.has("kind")) {
+      this.db.exec(
+        "ALTER TABLE pages ADD COLUMN kind TEXT NOT NULL DEFAULT 'topic'",
+      );
+    }
+    if (!names.has("metadata_json")) {
+      this.db.exec(
+        "ALTER TABLE pages ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'",
+      );
+    }
   }
 
   private rebuildFtsIfEmpty(): void {
@@ -352,22 +373,39 @@ export class KnowledgeStore {
 
   // ---- Pages ----
 
-  addPage(title: string, path: string, summary: string = ""): WikiPage {
+  addPage(
+    title: string,
+    path: string,
+    summary: string = "",
+    kind: string = "topic",
+    metadata: Record<string, unknown> = {},
+  ): WikiPage {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
       .prepare(
         `
-      INSERT INTO pages (id, title, path, summary, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO pages (id, title, path, summary, kind, metadata_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
       )
-      .run(id, title, path, summary, now, now);
+      .run(
+        id,
+        title,
+        path,
+        summary,
+        kind,
+        JSON.stringify(metadata),
+        now,
+        now,
+      );
     return {
       id,
       title,
       path,
       summary,
+      kind,
+      metadata: { ...metadata },
       claims: [],
       linksTo: [],
       linkedFrom: [],
@@ -390,6 +428,29 @@ export class KnowledgeStore {
     this.db
       .prepare("UPDATE pages SET summary = ?, updated_at = ? WHERE id = ?")
       .run(summary, new Date().toISOString(), id);
+  }
+
+  updatePageKind(id: string, kind: string): void {
+    this.db
+      .prepare("UPDATE pages SET kind = ?, updated_at = ? WHERE id = ?")
+      .run(kind, new Date().toISOString(), id);
+  }
+
+  updatePageMetadata(id: string, patch: Record<string, unknown>): void {
+    const row = this.stmts.getPageById.get(id) as any;
+    if (!row) return;
+    let current: Record<string, unknown> = {};
+    try {
+      current = JSON.parse(row.metadata_json || "{}");
+    } catch {
+      current = {};
+    }
+    const next = { ...current, ...patch };
+    this.db
+      .prepare(
+        "UPDATE pages SET metadata_json = ?, updated_at = ? WHERE id = ?",
+      )
+      .run(JSON.stringify(next), new Date().toISOString(), id);
   }
 
   listPages(): WikiPage[] {
@@ -685,16 +746,26 @@ export class KnowledgeStore {
   }
 
   listPagesFlat(): any[] {
-    return (this.stmts.listPagesFlat.all() as any[]).map((r) => ({
-      id: r.id,
-      title: r.title,
-      path: r.path,
-      summary: r.summary,
-      claimCount: r.claim_count,
-      linkCount: r.link_count,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-    }));
+    return (this.stmts.listPagesFlat.all() as any[]).map((r) => {
+      let metadata: Record<string, unknown> = {};
+      try {
+        metadata = JSON.parse(r.metadata_json || "{}");
+      } catch {
+        metadata = {};
+      }
+      return {
+        id: r.id,
+        title: r.title,
+        path: r.path,
+        summary: r.summary,
+        kind: r.kind ?? "topic",
+        metadata,
+        claimCount: r.claim_count,
+        linkCount: r.link_count,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      };
+    });
   }
 
   listEventsFlat(limit: number = 200): any[] {
@@ -1012,11 +1083,19 @@ export class KnowledgeStore {
     const linkedFrom = (this.stmts.pageLinkedFrom.all(id) as any[]).map(
       (r) => r.from_page_id,
     );
+    let metadata: Record<string, unknown> = {};
+    try {
+      metadata = JSON.parse(row.metadata_json || "{}");
+    } catch {
+      metadata = {};
+    }
     return {
       id,
       title: row.title,
       path: row.path,
       summary: row.summary,
+      kind: row.kind ?? "topic",
+      metadata,
       claims,
       linksTo,
       linkedFrom,

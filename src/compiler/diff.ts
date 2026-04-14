@@ -37,6 +37,7 @@ export async function computeKnowledgeDiff(
         claimId: "", // assigned during resolution
         statement: claim.statement,
         confidence: claim.confidence,
+        tags: claim.tags,
       });
     }
 
@@ -137,6 +138,7 @@ Respond in JSON:
           claimId: "",
           statement: newClaim.statement,
           confidence: newClaim.confidence,
+          tags: newClaim.tags,
         });
       }
     }
@@ -156,6 +158,7 @@ Respond in JSON:
         claimId: "",
         statement: claim.statement,
         confidence: claim.confidence,
+        tags: claim.tags,
       });
     }
   }

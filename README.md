@@ -42,11 +42,15 @@ That's it. Open `http://localhost:3737` and you've got:
 npm install -g quicky-wiki
 ```
 
+The package exposes three equivalent commands: **`quicky-wiki`**, **`qw`**, and **`create-quicky-wiki`** (all run the same CLI). Use whichever fits your muscle memory or tooling.
+
 Or use directly with npx:
 
 ```bash
 npx quicky-wiki init
 ```
+
+From a git clone of this repo, run **`npm run build`** before `npx quicky-wiki …`, `node dist/cli.js …`, or `npm start`, because the published CLI is the compiled `dist/` bundle.
 
 ### Requirements
 
@@ -113,10 +117,12 @@ The dashboard includes:
 - **Overview** — Stats at a glance
 - **Knowledge Graph** — Interactive canvas visualization (Obsidian-inspired dark theme, hover to unfold connections)
 - **Claims** — Browse all extracted claims with confidence scores
-- **Pages** — Wiki pages compiled from your claims
+- **Pages** — Wiki pages compiled from your claims (optional **entity kind** and metadata when configured)
 - **Timeline** — Temporal view of knowledge events
 - **Health** — Knowledge integrity: stale claims, contradictions, gaps
 - **Ask Wiki** — Chat with your knowledge base
+
+When you open a page, the slideout shows **Linked pages** (graph neighbors) and the **rendered wiki markdown** from `wiki/`. Inline **Obsidian-style wikilinks** work in that preview: `[[Page Title]]` and `[[label|Page Title]]` open the matching page by title. The dashboard script is embedded in the built CLI, so after changing TypeScript sources, run **`npm run build`** and restart `serve` to see UI updates.
 
 ### Knowledge Health
 
@@ -178,6 +184,8 @@ qw mcp                          # stdio mode (for Claude Desktop, etc.)
 qw mcp --http --port 3000       # HTTP mode
 ```
 
+Tools include querying, search (full-text on the graph), listing pages and claims, ingestion, and health reporting. Pages can carry an **entity kind** and **metadata** (see config / compiled wiki frontmatter). MCP adds **`list_entities`** (filter by kind and metadata) and **`update_entity_metadata`** for merging metadata without re-ingesting; **`list_pages`** and **`ingest_file`** accept optional kind-related parameters. Use each tool’s schema in your MCP client for full argument lists.
+
 ## Project Structure
 
 ```
@@ -187,6 +195,15 @@ my-wiki/
 │   └── graph.sqlite         # knowledge graph (claims, sources, events)
 ├── raw/                     # your source documents (immutable)
 └── wiki/                    # compiled output (Obsidian-compatible markdown)
+```
+
+## Development
+
+```bash
+git clone <repo-url> quicky-wiki && cd quicky-wiki
+npm install
+npm run build # required before serve / dist-based CLI picks up TS changes
+npm run typecheck      # optional
 ```
 
 ## License
